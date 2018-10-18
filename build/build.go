@@ -106,6 +106,9 @@ func (m Modules) WriteMetadataSha(path string) error {
 }
 
 func (m Modules) Contribute() error {
+	if m.buildContribution {
+		return fmt.Errorf("do not set build as part of build plan with npm buildpack")
+	}
 	if !m.launchContribution {
 		return nil
 	}
@@ -121,7 +124,6 @@ func (m Modules) Contribute() error {
 		return fmt.Errorf("failed in checking shas: %v", err)
 	}
 
-	cacheDir := filepath.Join(m.cacheLayer.Root, "node_modules")
 	launchDir := filepath.Join(m.launchLayer.Root, "node_modules")
 
 	if !sameShas {
@@ -138,21 +140,11 @@ func (m Modules) Contribute() error {
 				return fmt.Errorf("failed to install node_modules: %v", err)
 			}
 		}
-
-		if m.buildContribution {
-			m.logger.FirstLine("%s: %s to cache",
-				color.New(color.FgBlue, color.Bold).Sprint("Node Modules"), color.YellowString("Contributing"))
-			if err := m.copyModulesToLayer(cacheDir); err != nil {
-				return fmt.Errorf("failed to copy node_modules to the cache layer: %v", err)
-			}
-		}
-
-		if m.launchContribution {
-			m.logger.FirstLine("%s: %s to launch",
-				color.New(color.FgBlue, color.Bold).Sprint("Node Modules"), color.YellowString("Contributing"))
-			if err := m.copyModulesToLayer(launchDir); err != nil {
-				return fmt.Errorf("failed to copy the node_modules to the launch layer: %v", err)
-			}
+		
+		m.logger.FirstLine("%s: %s to launch",
+			color.New(color.FgBlue, color.Bold).Sprint("Node Modules"), color.YellowString("Contributing"))
+		if err := m.copyModulesToLayer(launchDir); err != nil {
+			return fmt.Errorf("failed to copy the node_modules to the launch layer: %v", err)
 		}
 
 		if err := m.WriteMetadataSha(filepath.Join(m.app.Root, "package-lock.json")); err != nil {

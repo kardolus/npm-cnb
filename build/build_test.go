@@ -88,29 +88,6 @@ var _ = Describe("Build", func() {
 					err = ioutil.WriteFile(filepath.Join(f.Build.Application.Root, "package-lock.json"), []byte("package lock"), 0666)
 					Expect(err).To(BeNil())
 				})
-				XIt("installs node modules to the cache layer when build is true", func() {
-					f.AddBuildPlan(T, detect.ModulesDependency, libbuildpack.BuildPlanDependency{
-						Metadata: libbuildpack.BuildPlanDependencyMetadata{
-							"build": true,
-						},
-					})
-
-					modules, _, err := build.NewModules(f.Build, mockNpm)
-					Expect(err).NotTo(HaveOccurred())
-
-					mockNpm.EXPECT().Install(f.Build.Application.Root).Do(func(dir string) {
-						err = os.MkdirAll(filepath.Join(dir, "node_modules"), 0777)
-						Expect(err).To(BeNil())
-						err = ioutil.WriteFile(filepath.Join(dir, "node_modules", "some_module"), []byte("module"), 0666)
-						Expect(err).To(BeNil())
-					})
-
-					err = modules.Contribute()
-					Expect(err).NotTo(HaveOccurred())
-
-					depCacheLayer := filepath.Join(f.Build.Cache.Root, "modules")
-					Expect(filepath.Join(depCacheLayer, "node_modules", "some_module")).To(BeAnExistingFile())
-				})
 
 				It("installs node modules to the launch layer when launch is true", func() {
 					f.AddBuildPlan(T, detect.ModulesDependency, libbuildpack.BuildPlanDependency{
@@ -144,7 +121,6 @@ var _ = Describe("Build", func() {
 				It("does not install node modules to the cache layer when build and launch are true", func() {
 					f.AddBuildPlan(T, detect.ModulesDependency, libbuildpack.BuildPlanDependency{
 						Metadata: libbuildpack.BuildPlanDependencyMetadata{
-							"build": true,
 							"launch": true,
 						},
 					})
@@ -172,7 +148,6 @@ var _ = Describe("Build", func() {
 				It("installs node modules to the cache layer when build and launch are true and updates metadata", func() {
 					f.AddBuildPlan(T, detect.ModulesDependency, libbuildpack.BuildPlanDependency{
 						Metadata: libbuildpack.BuildPlanDependencyMetadata{
-							"build": true,
 							"launch": true,
 						},
 					})
@@ -199,9 +174,6 @@ var _ = Describe("Build", func() {
 					err = modules.Contribute()
 					Expect(err).NotTo(HaveOccurred())
 
-					depCacheLayer := filepath.Join(f.Build.Cache.Root, "modules")
-					Expect(filepath.Join(depCacheLayer, "node_modules", "some_module")).To(BeAnExistingFile())
-
 					f.Build.Launch.Layer(detect.ModulesDependency).ReadMetadata(&metadata)
 					Expect(metadata.SHA256).To(Equal("152468741c83af08df4394d612172b58b2e7dca7164b5e6b79c5f6e96b829f77"))
 				})
@@ -210,7 +182,6 @@ var _ = Describe("Build", func() {
 				It("installs node modules to the cache layer when build and launch are true and updates metadata", func() {
 					f.AddBuildPlan(T, detect.ModulesDependency, libbuildpack.BuildPlanDependency{
 						Metadata: libbuildpack.BuildPlanDependencyMetadata{
-							"build": true,
 							"launch": true,
 						},
 					})
@@ -233,9 +204,6 @@ var _ = Describe("Build", func() {
 					err = modules.Contribute()
 					Expect(err).NotTo(HaveOccurred())
 
-					depCacheLayer := filepath.Join(f.Build.Cache.Root, "modules")
-					Expect(filepath.Join(depCacheLayer, "node_modules", "some_module")).To(BeAnExistingFile())
-
 					var metadata struct {
 						SHA256 string
 					}
@@ -255,25 +223,6 @@ var _ = Describe("Build", func() {
 				Expect(err).To(BeNil())
 			})
 			Context("and there is no layer metadata", func() {
-				XIt("rebuilds the node modules and copies them to the cache layer when build is true", func() {
-					f.AddBuildPlan(T, detect.ModulesDependency, libbuildpack.BuildPlanDependency{
-						Metadata: libbuildpack.BuildPlanDependencyMetadata{
-							"build": true,
-						},
-					})
-
-					modules, _, err := build.NewModules(f.Build, mockNpm)
-					Expect(err).NotTo(HaveOccurred())
-
-					mockNpm.EXPECT().Rebuild(f.Build.Application.Root).Return(nil).Times(1)
-
-					err = modules.Contribute()
-					Expect(err).NotTo(HaveOccurred())
-
-					depCacheLayer := filepath.Join(f.Build.Cache.Root, "modules")
-					Expect(filepath.Join(depCacheLayer, "node_modules", "some_module")).To(BeAnExistingFile())
-				})
-
 				It("rebuilds the node modules and copies them to the launch layer when launch is true", func() {
 					f.AddBuildPlan(T, detect.ModulesDependency, libbuildpack.BuildPlanDependency{
 						Metadata: libbuildpack.BuildPlanDependencyMetadata{
@@ -295,10 +244,9 @@ var _ = Describe("Build", func() {
 			})
 
 			Context("and there is layer metadata that is the same", func() {
-				It("does not install node modules to the cache layer when build and launch are true", func() {
+				It("does not install node modules to the cache and launch layer", func() {
 					f.AddBuildPlan(T, detect.ModulesDependency, libbuildpack.BuildPlanDependency{
 						Metadata: libbuildpack.BuildPlanDependencyMetadata{
-							"build": true,
 							"launch": true,
 						},
 					})
@@ -324,10 +272,9 @@ var _ = Describe("Build", func() {
 			})
 
 			Context("and there is layer metadata that is different", func() {
-				It("installs node modules to the cache layer when build and launch are true and updates metadata", func() {
+				It("installs node modules to the cache and launch layer and updates metadata", func() {
 					f.AddBuildPlan(T, detect.ModulesDependency, libbuildpack.BuildPlanDependency{
 						Metadata: libbuildpack.BuildPlanDependencyMetadata{
-							"build": true,
 							"launch": true,
 						},
 					})
@@ -349,9 +296,6 @@ var _ = Describe("Build", func() {
 					err = modules.Contribute()
 					Expect(err).NotTo(HaveOccurred())
 
-					depCacheLayer := filepath.Join(f.Build.Cache.Root, "modules")
-					Expect(filepath.Join(depCacheLayer, "node_modules", "some_module")).To(BeAnExistingFile())
-
 					f.Build.Launch.Layer(detect.ModulesDependency).ReadMetadata(&metadata)
 					Expect(metadata.SHA256).To(Equal("152468741c83af08df4394d612172b58b2e7dca7164b5e6b79c5f6e96b829f77"))
 				})
@@ -360,7 +304,6 @@ var _ = Describe("Build", func() {
 				It("installs node modules to the cache layer when build and launch are true and updates metadata", func() {
 					f.AddBuildPlan(T, detect.ModulesDependency, libbuildpack.BuildPlanDependency{
 						Metadata: libbuildpack.BuildPlanDependencyMetadata{
-							"build": true,
 							"launch": true,
 						},
 					})
@@ -376,9 +319,6 @@ var _ = Describe("Build", func() {
 
 					err = modules.Contribute()
 					Expect(err).NotTo(HaveOccurred())
-
-					depCacheLayer := filepath.Join(f.Build.Cache.Root, "modules")
-					Expect(filepath.Join(depCacheLayer, "node_modules", "some_module")).To(BeAnExistingFile())
 
 					var metadata struct {
 						SHA256 string
