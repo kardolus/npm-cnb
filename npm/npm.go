@@ -1,14 +1,22 @@
 package npm
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 )
 
 type NPM struct{}
 
-func (n *NPM) Install(src, dest string) error {
-	return n.runCommand(src, "--prefix", dest, "install", "--unsafe-perm")
+func (n *NPM) InstallInCache(src, dest string) error {
+	return n.runCommand(src,
+		"--prefix",
+		dest,
+		"install",
+		"--unsafe-perm",
+		"--cache",
+		fmt.Sprintf("%s/npm-cache", dest),
+	)
 }
 
 func (n *NPM) Rebuild(dir string) error {

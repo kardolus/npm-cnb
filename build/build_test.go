@@ -83,7 +83,6 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 			Expect(err).To(BeNil())
 
 			cacheLayer = f.Build.Cache.Layer(detect.NPMDependency).Root
-			err = os.MkdirAll(cacheLayer, 0777)
 			Expect(err).To(BeNil())
 		})
 
@@ -96,7 +95,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 				modules, _, err := build.NewModules(f.Build, mockNpm)
 				Expect(err).NotTo(HaveOccurred())
 
-				mockNpm.EXPECT().Install(gomock.Any(), gomock.Any()).Times(0)
+				mockNpm.EXPECT().InstallInCache(gomock.Any(), gomock.Any()).Times(0)
 
 				err = modules.Contribute()
 				Expect(err).NotTo(HaveOccurred())
@@ -123,7 +122,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 					})
 
 					it("installs node modules and writes metadata", func() {
-						mockNpm.EXPECT().Install(f.Build.Application.Root, f.Build.Cache.Layer(detect.NPMDependency).Root).Do(func(src, dir string) {
+						mockNpm.EXPECT().InstallInCache(f.Build.Application.Root, f.Build.Cache.Layer(detect.NPMDependency).Root).Do(func(src, dir string) {
 							err = os.MkdirAll(filepath.Join(dir, "node_modules"), 0777)
 							Expect(err).ToNot(HaveOccurred(), "err1")
 
@@ -152,7 +151,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 						metadata := build.Metadata{SHA256: "152468741c83af08df4394d612172b58b2e7dca7164b5e6b79c5f6e96b829f77"}
 						f.Build.Launch.Layer(detect.NPMDependency).WriteMetadata(metadata)
 
-						mockNpm.EXPECT().Install(f.Build.Application.Root, f.Build.Cache.Layer(detect.NPMDependency).Root).Times(0)
+						mockNpm.EXPECT().InstallInCache(f.Build.Application.Root, f.Build.Cache.Layer(detect.NPMDependency).Root).Times(0)
 
 						err = modules.Contribute()
 						Expect(err).NotTo(HaveOccurred())
@@ -178,7 +177,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 						metadata := build.Metadata{SHA256: "123456"}
 						f.Build.Launch.Layer(detect.NPMDependency).WriteMetadata(metadata)
 
-						mockNpm.EXPECT().Install(f.Build.Application.Root, f.Build.Cache.Layer(detect.NPMDependency).Root).Do(func(src, dir string) {
+						mockNpm.EXPECT().InstallInCache(f.Build.Application.Root, f.Build.Cache.Layer(detect.NPMDependency).Root).Do(func(src, dir string) {
 							err = os.MkdirAll(filepath.Join(dir, "node_modules"), 0777)
 							Expect(err).ToNot(HaveOccurred())
 

@@ -3,9 +3,7 @@ package utils
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -62,20 +60,14 @@ func CopyDirectory(srcDir, destDir string) error {
 }
 
 func CopyFile(srcPath, dstPath string) error {
-	from, err := os.Open(srcPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer from.Close()
-	to, err := os.OpenFile(dstPath, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0666)
+	src, err := ioutil.ReadFile(srcPath)
 	if err != nil {
 		return err
 	}
-	defer to.Close()
+	err = ioutil.WriteFile(dstPath, src, 066)
+	if err != nil {
+		return err
+	}
 
-	_, err = io.Copy(to, from)
-	if err != nil {
-		return err
-	}
 	return nil
 }
