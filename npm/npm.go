@@ -7,6 +7,7 @@ import (
 
 	"github.com/cloudfoundry/libjavabuildpack"
 	"github.com/cloudfoundry/npm-cnb/utils"
+	"github.com/pkg/errors"
 )
 
 type NPM struct {
@@ -26,7 +27,7 @@ func (n *NPM) InstallToLayer(srcLayer, dstLayer string) error {
 	return n.Runner.Run(srcLayer, "install", "--unsafe-perm", "--cache", filepath.Join(srcLayer, "npm-cache"))
 }
 
-func (n *NPM) RebuildLayer(srcLayer, dstLayer string) error {
+func (n *NPM) RebuildModules(srcLayer, dstLayer string) error {
 	srcPackageJsonPath := filepath.Join(srcLayer, "package.json")
 	if exists, err := libjavabuildpack.FileExists(srcPackageJsonPath); err != nil || !exists {
 		return fmt.Errorf("failed to find file %s ", srcPackageJsonPath)
@@ -38,23 +39,20 @@ func (n *NPM) RebuildLayer(srcLayer, dstLayer string) error {
 
 	srcModulesDir := filepath.Join(srcLayer, "node_modules")
 	dstModulesDir := filepath.Join(dstLayer, "node_modules")
-	if err := n.CleanAndCopyToDst(srcModulesDir, dstModulesDir); err != nil {
-		return fmt.Errorf("failed to rebuild : %v", err)
-	}
 
-	return nil
+	return n.CleanAndCopyToDst(srcModulesDir, dstModulesDir)
 }
 
 func (n *NPM) CleanAndCopyToDst(src, dst string) error {
 	if err := os.RemoveAll(dst); err != nil {
-		return fmt.Errorf("failed to remove modules in %s : %v", dst, err)
+		return errors.Wrap(err, fmt.Sprintf("failed to remove modules in %s", dst))
 	}
 
 	if err := n.copyModules(src, dst); err != nil {
-		return fmt.Errorf("failed to copy the src modules from %s to %s %v", src, dst, err)
+		return errors.Wrap(err, fmt.Sprintf("failed to copy the src modules from %s to %s", src, dst))
 	}
 
-	return nil
+	return n.copyModules(src, dst)
 }
 
 func (n *NPM) copyModules(src, dst string) error {
@@ -65,7 +63,7 @@ func (n *NPM) copyModules(src, dst string) error {
 
 	if !exists {
 		if err := os.MkdirAll(dst, 0777); err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to make directory %s", dst))
 		}
 	}
 

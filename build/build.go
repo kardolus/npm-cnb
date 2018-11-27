@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -34,71 +35,77 @@ type ModuleInstaller interface {
 }
 
 type Modules struct {
-	buildContribution, launchContribution bool
-	app                                   libbuildpackV3.Application
-	cacheLayer                            libbuildpackV3.CacheLayer
-	launchLayer                           libbuildpackV3.LaunchLayer
-	logger                                libjavabuildpack.Logger
-	npm                                   ModuleInstaller
+	BuildContribution, LaunchContribution bool
+	App                                   libbuildpackV3.Application
+	CacheLayer                            libbuildpackV3.CacheLayer
+	LaunchLayer                           libbuildpackV3.LaunchLayer
+	Logger                                libjavabuildpack.Logger
+	NPM                                   ModuleInstaller
 }
 
 type Metadata struct {
 	SHA256 string `toml:"sha256"`
 }
 
-func NewModules(builder libjavabuildpack.Build, npm ModuleInstaller) (Modules, bool, error) {
-	bp, ok := builder.BuildPlan[detect.NPMDependency]
-	if !ok {
+func NewModules(builder libjavabuildpack.Build, npm ModuleInstaller) (m Modules, planExists bool, e error) {
+	bp, planExists := builder.BuildPlan[detect.NPMDependency]
+	if !planExists {
 		return Modules{}, false, nil
 	}
 
 	modules := Modules{
-		npm:         npm,
-		app:         builder.Application,
-		logger:      builder.Logger,
-		cacheLayer:  builder.Cache.Layer(detect.NPMDependency),
-		launchLayer: builder.Launch.Layer(detect.NPMDependency),
+		NPM:         npm,
+		App:         builder.Application,
+		Logger:      builder.Logger,
+		CacheLayer:  builder.Cache.Layer(detect.NPMDependency),
+		LaunchLayer: builder.Launch.Layer(detect.NPMDependency),
 	}
 
-	if val, ok := bp.Metadata["build"]; ok {
-		modules.buildContribution = val.(bool)
+	var isBool bool
+	if val, contributeBuild := bp.Metadata["build"]; contributeBuild {
+		modules.BuildContribution, isBool = val.(bool)
+		if !isBool {
+			return Modules{}, false, errors.New("NPM build plan build contribution must be boolean")
+		}
 	}
 
-	if val, ok := bp.Metadata["launch"]; ok {
-		modules.launchContribution = val.(bool)
+	if val, contributeLaunch := bp.Metadata["launch"]; contributeLaunch {
+		modules.LaunchContribution, isBool = val.(bool)
+		if !isBool {
+			return Modules{}, false, errors.New("NPM build plan launch contribution must be boolean")
+		}
 	}
-
 	return modules, true, nil
 }
 
 func (m Modules) Contribute() error {
-	if !m.buildContribution && !m.launchContribution {
+	if !m.BuildContribution && !m.LaunchContribution {
 		return nil
 	}
 
-	if m.buildContribution {
-		if !m.launchContribution {
-			m.logger.FirstLine("%s: %s to cache", logHeader(), color.YellowString("Contributing"))
+	if m.BuildContribution {
+		if !m.LaunchContribution {
+			m.Logger.FirstLine("%s: %s to cache", logHeader(), color.YellowString("Contributing"))
 			if err := m.installInCache(); err != nil {
 				return fmt.Errorf("failed to install in cache for build : %v", err)
 			}
 		}
 
-		m.logger.SubsequentLine("Writing NODE_PATH")
-		if err := m.cacheLayer.AppendPathEnv("NODE_PATH", filepath.Join(m.cacheLayer.Root, "node_modules")); err != nil {
+		m.Logger.SubsequentLine("Writing NODE_PATH")
+		if err := m.CacheLayer.AppendPathEnv("NODE_PATH", filepath.Join(m.CacheLayer.Root, "node_modules")); err != nil {
 			return err
 		}
 	}
 
-	if m.launchContribution {
-		if sameSHASums, err := m.packageLockMatchesMetadataSha(); err != nil {
+	if m.LaunchContribution {
+		if sameSHASums, err := m.packageLockMatchesMetadataSHA(); err != nil {
 			return err
 		} else if sameSHASums {
-			m.logger.FirstLine("%s: %s cached launch layer", logHeader(), color.GreenString("Reusing"))
+			m.Logger.FirstLine("%s: %s cached launch layer", logHeader(), color.GreenString("Reusing"))
 			return nil
 		}
 
-		m.logger.FirstLine("%s: %s to launch", logHeader(), color.YellowString("Contributing"))
+		m.Logger.FirstLine("%s: %s to launch", logHeader(), color.YellowString("Contributing"))
 
 		if err := m.installInCache(); err != nil {
 			return fmt.Errorf("failed to install in cache for launch : %v", err)
@@ -113,7 +120,7 @@ func (m Modules) Contribute() error {
 		}
 	}
 
-	appModulesDir := filepath.Join(m.app.Root, "node_modules")
+	appModulesDir := filepath.Join(m.App.Root, "node_modules")
 	if err := os.RemoveAll(appModulesDir); err != nil {
 		return fmt.Errorf("failed to clean up the node_modules: %v", err)
 	}
@@ -121,8 +128,8 @@ func (m Modules) Contribute() error {
 	return nil
 }
 
-func (m Modules) packageLockMatchesMetadataSha() (bool, error) {
-	packageLockPath := filepath.Join(m.app.Root, "package-lock.json")
+func (m Modules) packageLockMatchesMetadataSHA() (bool, error) {
+	packageLockPath := filepath.Join(m.App.Root, "package-lock.json")
 	if exists, err := libjavabuildpack.FileExists(packageLockPath); err != nil {
 		return false, fmt.Errorf("failed to check for package-lock.json: %v", err)
 	} else if !exists {
@@ -135,7 +142,7 @@ func (m Modules) packageLockMatchesMetadataSha() (bool, error) {
 	}
 
 	var metadata Metadata
-	if err := m.launchLayer.ReadMetadata(&metadata); err != nil {
+	if err := m.LaunchLayer.ReadMetadata(&metadata); err != nil {
 		return false, err
 	}
 
@@ -148,14 +155,14 @@ func (m Modules) packageLockMatchesMetadataSha() (bool, error) {
 	return bytes.Equal(metadataHash, hash[:]), nil
 }
 
-func (m Modules) writeMetadataSha(path string) error {
+func (m Modules) writeMetadataSHA(path string) error {
 	buf, err := ioutil.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %v", path, err)
 	}
 
 	hash := sha256.Sum256(buf)
-	return m.launchLayer.WriteMetadata(Metadata{SHA256: hex.EncodeToString(hash[:])})
+	return m.LaunchLayer.WriteMetadata(Metadata{SHA256: hex.EncodeToString(hash[:])})
 }
 
 func (m *Modules) copyModulesToLayer(src, dest string) error {
@@ -170,7 +177,7 @@ func (m *Modules) copyModulesToLayer(src, dest string) error {
 }
 
 func (m Modules) installInCache() error {
-	appModulesDir := filepath.Join(m.app.Root, "node_modules")
+	appModulesDir := filepath.Join(m.App.Root, "node_modules")
 
 	vendored, err := libjavabuildpack.FileExists(appModulesDir)
 	if err != nil {
@@ -178,15 +185,15 @@ func (m Modules) installInCache() error {
 	}
 
 	if vendored {
-		m.logger.SubsequentLine("%s node_modules", color.YellowString("Rebuilding"))
+		m.Logger.SubsequentLine("%s node_modules", color.YellowString("Rebuilding"))
 
-		if err := m.npm.RebuildLayer(m.app.Root, m.cacheLayer.Root); err != nil {
+		if err := m.NPM.RebuildLayer(m.App.Root, m.CacheLayer.Root); err != nil {
 			return fmt.Errorf("failed to rebuild node_modules: %v", err)
 		}
 	} else {
-		m.logger.SubsequentLine("%s node_modules", color.YellowString("Installing"))
+		m.Logger.SubsequentLine("%s node_modules", color.YellowString("Installing"))
 
-		cacheModulesDir := filepath.Join(m.cacheLayer.Root, "node_modules")
+		cacheModulesDir := filepath.Join(m.CacheLayer.Root, "node_modules")
 		if exists, err := libjavabuildpack.FileExists(cacheModulesDir); err != nil {
 			return err
 		} else if !exists {
@@ -200,7 +207,7 @@ func (m Modules) installInCache() error {
 		}
 		defer os.Remove(appModulesDir)
 
-		if err := m.npm.InstallToLayer(m.app.Root, m.cacheLayer.Root); err != nil {
+		if err := m.NPM.InstallToLayer(m.App.Root, m.CacheLayer.Root); err != nil {
 			return fmt.Errorf("failed to install and copy node_modules: %v", err)
 		}
 	}
@@ -209,14 +216,14 @@ func (m Modules) installInCache() error {
 }
 
 func (m Modules) installInLaunch() error {
-	cacheModulesDir := filepath.Join(m.cacheLayer.Root, "node_modules")
-	launchModulesDir := filepath.Join(m.launchLayer.Root, "node_modules")
+	cacheModulesDir := filepath.Join(m.CacheLayer.Root, "node_modules")
+	launchModulesDir := filepath.Join(m.LaunchLayer.Root, "node_modules")
 
-	if err := m.npm.CleanAndCopyToDst(cacheModulesDir, launchModulesDir); err != nil {
+	if err := m.NPM.CleanAndCopyToDst(cacheModulesDir, launchModulesDir); err != nil {
 		return fmt.Errorf("failed to copy the node_modules to the launch layer: %v", err)
 	}
 
-	if err := m.writeMetadataSha(filepath.Join(m.app.Root, "package-lock.json")); err != nil {
+	if err := m.writeMetadataSHA(filepath.Join(m.App.Root, "package-lock.json")); err != nil {
 		return fmt.Errorf("failed to write metadata to package-lock.json: %v", err)
 	}
 
@@ -224,10 +231,10 @@ func (m Modules) installInLaunch() error {
 }
 
 func (m Modules) writeProfile() error {
-	m.logger.SubsequentLine("Writing profile.d/NODE_PATH")
+	m.Logger.SubsequentLine("Writing profile.d/NODE_PATH")
 
-	launchModulesDir := filepath.Join(m.launchLayer.Root, "node_modules")
-	if err := m.launchLayer.WriteProfile("NODE_PATH", fmt.Sprintf("export NODE_PATH=%s", launchModulesDir)); err != nil {
+	launchModulesDir := filepath.Join(m.LaunchLayer.Root, "node_modules")
+	if err := m.LaunchLayer.WriteProfile("NODE_PATH", fmt.Sprintf("export NODE_PATH=\"%s\"", launchModulesDir)); err != nil {
 		return fmt.Errorf("failed to write NODE_PATH in the launch layer: %v", err)
 	}
 	return nil

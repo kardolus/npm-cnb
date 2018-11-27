@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -65,6 +68,76 @@ func CopyFile(srcPath, dstPath string) error {
 		return err
 	}
 	err = ioutil.WriteFile(dstPath, src, 066)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type JSON struct {
+}
+
+func NewJSON() *JSON {
+	return &JSON{}
+}
+
+const (
+	bom0 = 0xef
+	bom1 = 0xbb
+	bom2 = 0xbf
+)
+
+func removeBOM(b []byte) []byte {
+	if len(b) >= 3 &&
+		b[0] == bom0 &&
+		b[1] == bom1 &&
+		b[2] == bom2 {
+		return b[3:]
+	}
+	return b
+}
+
+func (j *JSON) Load(file string, obj interface{}) error {
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(removeBOM(data), obj)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (j *JSON) Write(dest string, obj interface{}) error {
+	data, err := json.Marshal(&obj)
+	if err != nil {
+		return err
+	}
+
+	err = writeToFile(bytes.NewBuffer(data), dest, 0666)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeToFile(source io.Reader, destFile string, mode os.FileMode) error {
+	err := os.MkdirAll(filepath.Dir(destFile), 0755)
+	if err != nil {
+		return err
+	}
+
+	fh, err := os.OpenFile(destFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	defer fh.Close()
+
+	_, err = io.Copy(fh, source)
 	if err != nil {
 		return err
 	}

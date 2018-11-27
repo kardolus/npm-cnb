@@ -1,11 +1,12 @@
-package package_json
+package packagejson
 
 // TODO: This file is common between node-related buildpacks. Find a shared place to put it.
 
 import (
 	"errors"
-	"github.com/cloudfoundry/libbuildpack"
 	"os"
+
+	"github.com/cloudfoundry/npm-cnb/utils"
 )
 
 type PackageJSON struct {
@@ -16,7 +17,7 @@ type Engines struct {
 	Node string `json:"node"`
 	Yarn string `json:"yarn"`
 	NPM  string `json:"npm"`
-	Iojs string `json:"iojs"`
+	IOJS string `json:"iojs"`
 }
 
 type logger interface {
@@ -26,12 +27,12 @@ type logger interface {
 func LoadPackageJSON(path string, logger logger) (PackageJSON, error) {
 	var p PackageJSON
 
-	err := libbuildpack.NewJSON().Load(path, &p)
+	err := utils.NewJSON().Load(path, &p)
 	if err != nil && !os.IsNotExist(err) {
 		return PackageJSON{}, err
 	}
 
-	if p.Engines.Iojs != "" {
+	if p.Engines.IOJS != "" {
 		return PackageJSON{}, errors.New("io.js not supported by this buildpack")
 	}
 

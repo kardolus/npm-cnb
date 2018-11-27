@@ -4,37 +4,37 @@ import (
 	"fmt"
 	"path/filepath"
 
-	libbuildpackV3 "github.com/buildpack/libbuildpack"
-	"github.com/cloudfoundry/libbuildpack"
-	"github.com/cloudfoundry/npm-cnb/package_json"
+	"github.com/buildpack/libbuildpack"
+	"github.com/cloudfoundry/libjavabuildpack"
+	"github.com/cloudfoundry/npm-cnb/packagejson"
 )
 
 const NodeDependency = "node"
 const NPMDependency = "npm"
 
-func UpdateBuildPlan(libDetect *libbuildpackV3.Detect) error {
+func UpdateBuildPlan(libDetect *libbuildpack.Detect) error {
 	packageJSONPath := filepath.Join(libDetect.Application.Root, "package.json")
-	if exists, err := libbuildpack.FileExists(packageJSONPath); err != nil {
+	if exists, err := libjavabuildpack.FileExists(packageJSONPath); err != nil {
 		return fmt.Errorf("error checking filepath %s", packageJSONPath)
 	} else if !exists {
 		return fmt.Errorf("no package.json found in %s", packageJSONPath)
 	}
 
-	pkgJSON, err := package_json.LoadPackageJSON(packageJSONPath, libDetect.Logger)
+	pkgJSON, err := packagejson.LoadPackageJSON(packageJSONPath, libDetect.Logger)
 	if err != nil {
 		return err
 	}
 
-	libDetect.BuildPlan[NodeDependency] = libbuildpackV3.BuildPlanDependency{
+	libDetect.BuildPlan[NodeDependency] = libbuildpack.BuildPlanDependency{
 		Version: pkgJSON.Engines.Node,
-		Metadata: libbuildpackV3.BuildPlanDependencyMetadata{
+		Metadata: libbuildpack.BuildPlanDependencyMetadata{
 			"build":  true,
 			"launch": true,
 		},
 	}
 
-	libDetect.BuildPlan[NPMDependency] = libbuildpackV3.BuildPlanDependency{
-		Metadata: libbuildpackV3.BuildPlanDependencyMetadata{
+	libDetect.BuildPlan[NPMDependency] = libbuildpack.BuildPlanDependency{
+		Metadata: libbuildpack.BuildPlanDependencyMetadata{
 			"launch": true,
 		},
 	}

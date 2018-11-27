@@ -5,8 +5,9 @@
 package build_test
 
 import (
-	gomock "github.com/golang/mock/gomock"
 	reflect "reflect"
+
+	gomock "github.com/golang/mock/gomock"
 )
 
 // MockModuleInstaller is a mock of ModuleInstaller interface
@@ -44,16 +45,16 @@ func (mr *MockModuleInstallerMockRecorder) InstallToLayer(arg0, arg1 interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallToLayer", reflect.TypeOf((*MockModuleInstaller)(nil).InstallToLayer), arg0, arg1)
 }
 
-// RebuildLayer mocks base method
+// RebuildModules mocks base method
 func (m *MockModuleInstaller) RebuildLayer(arg0, arg1 string) error {
-	ret := m.ctrl.Call(m, "RebuildLayer", arg0, arg1)
+	ret := m.ctrl.Call(m, "RebuildModules", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// RebuildLayer indicates an expected call of RebuildLayer
+// RebuildModules indicates an expected call of RebuildModules
 func (mr *MockModuleInstallerMockRecorder) RebuildLayer(arg0, arg1 interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RebuildLayer", reflect.TypeOf((*MockModuleInstaller)(nil).RebuildLayer), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RebuildModules", reflect.TypeOf((*MockModuleInstaller)(nil).RebuildLayer), arg0, arg1)
 }
 
 // CleanAndCopyToDst mocks base method

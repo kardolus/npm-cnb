@@ -46,7 +46,7 @@ func testNpm(t *testing.T, when spec.G, it spec.S) {
 		mockCtrl.Finish()
 	})
 
-	when("RebuildLayer", func() {
+	when("RebuildModules", func() {
 		it.Before(func() {
 			err = os.MkdirAll(appRoot, 0777)
 			Expect(err).To(BeNil())
@@ -70,7 +70,7 @@ func testNpm(t *testing.T, when spec.G, it spec.S) {
 			Expect(err).To(BeNil())
 
 			mockRunner.EXPECT().Run(gomock.Any(), gomock.Any()).Times(1)
-			err = Npm.RebuildLayer(appRoot, cacheLayer)
+			err = Npm.RebuildModules(appRoot, cacheLayer)
 			Expect(err).To(BeNil())
 			Expect(filepath.Join(leftpad, "index.js")).ToNot(BeAnExistingFile())
 		})
@@ -82,7 +82,7 @@ func testNpm(t *testing.T, when spec.G, it spec.S) {
 
 			mockRunner.EXPECT().Run(gomock.Any(), gomock.Any()).Times(1)
 
-			err = Npm.RebuildLayer(appRoot, cacheLayer)
+			err = Npm.RebuildModules(appRoot, cacheLayer)
 
 			Expect(err).To(BeNil())
 			Expect(filepath.Join(cacheLayer, "node_modules", "left_pad")).To(BeAnExistingFile())
@@ -91,7 +91,7 @@ func testNpm(t *testing.T, when spec.G, it spec.S) {
 		it("rebuilds in dst", func() {
 			mockRunner.EXPECT().Run(appRoot, "rebuild").Times(1)
 
-			err = Npm.RebuildLayer(appRoot, cacheLayer)
+			err = Npm.RebuildModules(appRoot, cacheLayer)
 			Expect(err).To(BeNil())
 		})
 	})
