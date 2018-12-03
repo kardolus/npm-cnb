@@ -46,7 +46,7 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 				URI: "https://github.com/cloudfoundry/nodejs-cnb/releases/download/v0.0.1-alpha/nodejs-cnb.tgz",
 			},
 			{
-				ID:  "org.cloudfoundry.buildpacks.npm",
+				ID:  "org.cloudfoundry.buildpacks.old_npm",
 				URI: "file://" + dagg.BuildpackDir,
 			},
 		}
@@ -60,8 +60,8 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 						Version: "0.0.1",
 					},
 					{
-						ID:      "org.cloudfoundry.buildpacks.npm",
-						Name:    "npm",
+						ID:      "org.cloudfoundry.buildpacks.old_npm",
+						Name:    "old_npm",
 						Version: "0.0.1",
 					},
 				},

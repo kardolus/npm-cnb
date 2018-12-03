@@ -1,160 +1,178 @@
 package npm_test
 
 import (
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"testing"
-
-	"github.com/cloudfoundry/libjavabuildpack/test"
-	"github.com/cloudfoundry/npm-cnb/detect"
-	. "github.com/cloudfoundry/npm-cnb/npm"
+	"github.com/buildpack/libbuildpack/buildplan"
+	"github.com/cloudfoundry/libcfbuildpack/test"
+	"github.com/cloudfoundry/npm-cnb/npm"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/gomega"
 	"github.com/sclevine/spec"
 	"github.com/sclevine/spec/report"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"testing"
 )
 
-//go:generate mockgen -source=runner.go -destination=mocks_test.go -package=npm_test
+//go:generate mockgen -source=npm.go -destination=mocks_test.go -package=npm_test
 
-func TestUnitNpm(t *testing.T) {
+func TestUnitNPM(t *testing.T) {
 	RegisterTestingT(t)
-	spec.Run(t, "Build", testNpm, spec.Report(report.Terminal{}))
+	spec.Run(t, "NPM", testNPM, spec.Report(report.Terminal{}))
 }
 
-func testNpm(t *testing.T, when spec.G, it spec.S) {
-	var (
-		mockCtrl   *gomock.Controller
-		mockRunner *MockRunner
-		Npm        *NPM
-		f          test.BuildFactory
-		err        error
-		cacheLayer string
-		appRoot    string
-	)
+func testNPM(t *testing.T, when spec.G, it spec.S) {
+	when("npm.NewContributor", func() {
+		var (
+			mockCtrl       *gomock.Controller
+			mockPkgManager *MockPackageManager
+			factory        *test.BuildFactory
+		)
 
-	it.Before(func() {
-		f = test.NewBuildFactory(t)
-		mockCtrl = gomock.NewController(t)
-		mockRunner = NewMockRunner(mockCtrl)
-		Npm = &NPM{Runner: mockRunner}
-		cacheLayer = f.Build.Cache.Layer(detect.NPMDependency).Root
-		appRoot = f.Build.Application.Root
-	})
-
-	it.After(func() {
-		mockCtrl.Finish()
-	})
-
-	when("RebuildLayer", func() {
 		it.Before(func() {
-			err = os.MkdirAll(appRoot, 0777)
-			Expect(err).To(BeNil())
+			mockCtrl = gomock.NewController(t)
+			mockPkgManager = NewMockPackageManager(mockCtrl)
 
-			err = ioutil.WriteFile(filepath.Join(appRoot, "package.json"), []byte("package json"), 0666)
-			Expect(err).To(BeNil())
+			factory = test.NewBuildFactory(t)
 
-			err = os.MkdirAll(filepath.Join(appRoot, "node_modules"), 0777)
-			Expect(err).To(BeNil())
-
-			err = os.MkdirAll(f.Build.Cache.Root, 0777)
-			Expect(err).To(BeNil())
+			Expect(os.Mkdir(factory.Build.Application.Root, 0777)).To(Succeed())
 		})
 
-		it("removes existing copies of the destination folder's `node_modules`", func() {
-			leftpad := filepath.Join(f.Build.Cache.Layer(detect.NPMDependency).Root, "node_modules", "left_pad")
-			err = os.MkdirAll(leftpad, 0777)
-			Expect(err).To(BeNil())
-
-			err = ioutil.WriteFile(filepath.Join(leftpad, "index.js"), []byte("leftpad"), 0666)
-			Expect(err).To(BeNil())
-
-			mockRunner.EXPECT().Run(gomock.Any(), gomock.Any()).Times(1)
-			err = Npm.RebuildLayer(appRoot, cacheLayer)
-			Expect(err).To(BeNil())
-			Expect(filepath.Join(leftpad, "index.js")).ToNot(BeAnExistingFile())
+		it.After(func() {
+			mockCtrl.Finish()
 		})
 
-		it("copies the src directories node_modules folder", func() {
-			leftpad := filepath.Join(appRoot, "node_modules", "left_pad")
-			err = os.MkdirAll(leftpad, 0777)
-			Expect(err).To(BeNil())
+		when("there is no package-lock.json", func() {
+			it("fails", func() {
+				factory.AddBuildPlan(t, npm.Dependency, buildplan.Dependency{})
 
-			mockRunner.EXPECT().Run(gomock.Any(), gomock.Any()).Times(1)
-
-			err = Npm.RebuildLayer(appRoot, cacheLayer)
-
-			Expect(err).To(BeNil())
-			Expect(filepath.Join(cacheLayer, "node_modules", "left_pad")).To(BeAnExistingFile())
+				_, _, err := npm.NewContributor(factory.Build, mockPkgManager)
+				Expect(err).To(HaveOccurred())
+			})
 		})
 
-		it("rebuilds in dst", func() {
-			mockRunner.EXPECT().Run(appRoot, "rebuild").Times(1)
+		when("there is a package-lock.json", func() {
+			it.Before(func() {
+				lockFile := filepath.Join(factory.Build.Application.Root, "package-lock.json")
+				Expect(ioutil.WriteFile(lockFile, []byte("package lock"), 0666)).To(Succeed())
+			})
 
-			err = Npm.RebuildLayer(appRoot, cacheLayer)
-			Expect(err).To(BeNil())
+
+			it("returns true if a build plan exists", func() {
+				factory.AddBuildPlan(t, npm.Dependency, buildplan.Dependency{})
+
+				_, willContribute, err := npm.NewContributor(factory.Build, mockPkgManager)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(willContribute).To(BeTrue())
+			})
+
+			it("returns false if a build plan does not exist", func() {
+				_, willContribute, err := npm.NewContributor(factory.Build, mockPkgManager)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(willContribute).To(BeFalse())
+			})
+
+			it("uses package-lock.json for identity", func() {
+				factory.AddBuildPlan(t, npm.Dependency, buildplan.Dependency{})
+
+				contributor, _, _ := npm.NewContributor(factory.Build, mockPkgManager)
+				name, version := contributor.Identity()
+				Expect(name).To(Equal(npm.Dependency))
+				Expect(version).To(Equal("152468741c83af08df4394d612172b58b2e7dca7164b5e6b79c5f6e96b829f77"))
+			})
+
+			when("the app is vendored", func() {
+				it.Before(func() {
+					nodeModules := filepath.Join(factory.Build.Application.Root, "node_modules")
+					Expect(os.Mkdir(nodeModules, 0777)).To(Succeed())
+
+					mockPkgManager.EXPECT().Rebuild(factory.Build.Application.Root).Do(func(location string) {
+						Expect(ioutil.WriteFile(filepath.Join(nodeModules, "test_module"), []byte("some module"), 0666)).To(Succeed())
+					})
+				})
+
+				it("contributes modules to the cache layer when included in the build plan", func() {
+					factory.AddBuildPlan(t, npm.Dependency, buildplan.Dependency{
+						Metadata: buildplan.Metadata{"build": true},
+					})
+
+					contributor, _, err := npm.NewContributor(factory.Build, mockPkgManager)
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(contributor.Contribute()).To(Succeed())
+
+					layer := factory.Build.Layers.Layer(npm.Dependency)
+					test.BeLayerLike(t, layer, true, true, false)
+					test.BeFileLike(t, filepath.Join(layer.Root, "test_module"), 0644, "some module")
+					test.BeOverrideSharedEnvLike(t, layer, "NODE_PATH", layer.Root)
+
+					Expect(filepath.Join(factory.Build.Application.Root, "node_modules")).NotTo(BeADirectory())
+				})
+
+				it("contributes modules to the launch layer when included in the build plan", func() {
+					factory.AddBuildPlan(t, npm.Dependency, buildplan.Dependency{
+						Metadata: buildplan.Metadata{"launch": true},
+					})
+
+					contributor, _, err := npm.NewContributor(factory.Build, mockPkgManager)
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(contributor.Contribute()).To(Succeed())
+
+					layer := factory.Build.Layers.Layer(npm.Dependency)
+					test.BeLayerLike(t, layer, false, true, true)
+					test.BeFileLike(t, filepath.Join(layer.Root, "test_module"), 0644, "some module")
+					test.BeOverrideSharedEnvLike(t, layer, "NODE_PATH", layer.Root)
+
+					Expect(filepath.Join(factory.Build.Application.Root, "node_modules")).NotTo(BeADirectory())
+				})
+			})
+
+			when("the app is not vendored", func() {
+				it.Before(func() {
+					mockPkgManager.EXPECT().Install(factory.Build.Application.Root).Do(func(location string) {
+						nodeModules := filepath.Join(factory.Build.Application.Root, "node_modules")
+						Expect(os.Mkdir(nodeModules, 0777)).To(Succeed())
+						Expect(ioutil.WriteFile(filepath.Join(nodeModules, "test_module"), []byte("some module"), 0666)).To(Succeed())
+					})
+				})
+
+				it("contributes modules to the cache layer when included in the build plan", func() {
+					factory.AddBuildPlan(t, npm.Dependency, buildplan.Dependency{
+						Metadata: buildplan.Metadata{"build": true},
+					})
+
+					contributor, _, err := npm.NewContributor(factory.Build, mockPkgManager)
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(contributor.Contribute()).To(Succeed())
+
+					layer := factory.Build.Layers.Layer(npm.Dependency)
+					test.BeLayerLike(t, layer, true, true, false)
+					test.BeFileLike(t, filepath.Join(layer.Root, "test_module"), 0644, "some module")
+					test.BeOverrideSharedEnvLike(t, layer, "NODE_PATH", layer.Root)
+
+					Expect(filepath.Join(factory.Build.Application.Root, "node_modules")).NotTo(BeADirectory())
+				})
+
+				it("contributes modules to the launch layer when included in the build plan", func() {
+					factory.AddBuildPlan(t, npm.Dependency, buildplan.Dependency{
+						Metadata: buildplan.Metadata{"launch": true},
+					})
+
+					contributor, _, err := npm.NewContributor(factory.Build, mockPkgManager)
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(contributor.Contribute()).To(Succeed())
+
+					layer := factory.Build.Layers.Layer(npm.Dependency)
+					test.BeLayerLike(t, layer, false, true, true)
+					test.BeFileLike(t, filepath.Join(layer.Root, "test_module"), 0644, "some module")
+					test.BeOverrideSharedEnvLike(t, layer, "NODE_PATH", layer.Root)
+
+					Expect(filepath.Join(factory.Build.Application.Root, "node_modules")).NotTo(BeADirectory())
+				})
+			})
 		})
-	})
-
-	when("InstallToLayer", func() {
-		it.Before(func() {
-			err = os.MkdirAll(appRoot, 0777)
-			Expect(err).To(BeNil())
-
-			err = os.MkdirAll(filepath.Join(appRoot, "node_modules"), 0777)
-			Expect(err).To(BeNil())
-
-			err = ioutil.WriteFile(filepath.Join(appRoot, "package.json"), []byte("package json"), 0666)
-			Expect(err).To(BeNil())
-		})
-
-		it("run NPM install in the app dir", func() {
-			installCommand := []string{"install", "--unsafe-perm", "--cache", filepath.Join(appRoot, "npm-cache")}
-			mockRunner.EXPECT().Run(appRoot, installCommand).Times(1)
-
-			err = Npm.InstallToLayer(appRoot, cacheLayer)
-			Expect(err).To(BeNil())
-		})
-	})
-
-	when("CleanAndCopyToDst", func() {
-		var original_bytes []byte
-		var dest_file string
-		it.Before(func() {
-			cacheLayer = f.Build.Cache.Layer(detect.NPMDependency).Root
-			rightpad := filepath.Join(cacheLayer, "node_modules", "rightpad")
-			original_bytes = []byte("package json")
-
-			err = os.MkdirAll(filepath.Join(f.Build.Launch.Root, "node_modules"), 0777)
-			dest_file = filepath.Join(f.Build.Launch.Root, "node_modules", "old_modules")
-
-			err = os.MkdirAll(filepath.Join(cacheLayer, "node_modules"), 0777)
-			Expect(err).To(BeNil())
-
-			err = ioutil.WriteFile(rightpad, original_bytes, 0666)
-			Expect(err).To(BeNil())
-
-			err = ioutil.WriteFile(dest_file, original_bytes, 0666)
-			Expect(err).To(BeNil())
-
-		})
-
-		it("copies modules from src to dst", func() {
-			copy_dest := filepath.Join(f.Build.Launch.Root, "node_modules", "rightpad")
-
-			err = Npm.CleanAndCopyToDst(cacheLayer, f.Build.Launch.Root)
-			Expect(err).To(BeNil())
-
-			copied_bytes, err := ioutil.ReadFile(copy_dest)
-			Expect(err).To(BeNil())
-			Expect(copied_bytes).To(Equal(original_bytes))
-		})
-		it("removes old content in dst before copying", func() {
-			Expect(dest_file).To(BeAnExistingFile())
-			err = Npm.CleanAndCopyToDst(cacheLayer, f.Build.Launch.Root)
-			Expect(err).To(BeNil())
-			Expect(dest_file).ToNot(BeAnExistingFile())
-		})
-
 	})
 }

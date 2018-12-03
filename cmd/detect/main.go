@@ -11,7 +11,7 @@ import (
 func main() {
 	detector, err := libbuildpack.DefaultDetect()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create default detector: %s", err)
+		_, _ = fmt.Fprintf(os.Stderr, "failed to create default detector: %s", err)
 		os.Exit(100)
 	}
 

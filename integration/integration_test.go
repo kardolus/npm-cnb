@@ -47,7 +47,7 @@ func testIntegration(t *testing.T, when spec.G, it spec.S) {
 					{
 						[]libbuildpack.BuildpackInfo{
 							{
-								ID:      "org.cloudfoundry.buildpacks.npm",
+								ID:      "org.cloudfoundry.buildpacks.old_npm",
 								Version: "0.0.1",
 							},
 						},
@@ -58,7 +58,7 @@ func testIntegration(t *testing.T, when spec.G, it spec.S) {
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(len(detectResult.Group.Buildpacks)).To(Equal(1))
-		Expect(detectResult.Group.Buildpacks[0].ID).To(Equal("org.cloudfoundry.buildpacks.npm"))
+		Expect(detectResult.Group.Buildpacks[0].ID).To(Equal("org.cloudfoundry.buildpacks.old_npm"))
 		Expect(detectResult.Group.Buildpacks[0].Version).To(Equal("0.0.1"))
 
 		Expect(len(detectResult.BuildPlan)).To(Equal(2))
@@ -78,7 +78,7 @@ func testIntegration(t *testing.T, when spec.G, it spec.S) {
 		group := dagger.Group{
 			Buildpacks: []libbuildpack.BuildpackInfo{
 				{
-					ID:      "org.cloudfoundry.buildpacks.npm",
+					ID:      "org.cloudfoundry.buildpacks.old_npm",
 					Version: "0.0.1",
 				},
 			},
@@ -92,6 +92,6 @@ func testIntegration(t *testing.T, when spec.G, it spec.S) {
 
 		Expect(len(metadata.Processes)).To(Equal(1))
 		Expect(metadata.Processes[0].Type).To(Equal("web"))
-		Expect(metadata.Processes[0].Command).To(Equal("npm start"))
+		Expect(metadata.Processes[0].Command).To(Equal("old_npm start"))
 	})
 }

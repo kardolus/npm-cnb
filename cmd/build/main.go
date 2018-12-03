@@ -2,40 +2,41 @@ package main
 
 import (
 	"fmt"
-	"os"
-
-	"github.com/cloudfoundry/libjavabuildpack"
-	"github.com/cloudfoundry/npm-cnb/build"
+	"github.com/buildpack/libbuildpack/buildplan"
+	"github.com/cloudfoundry/libcfbuildpack/build"
 	"github.com/cloudfoundry/npm-cnb/npm"
+	"github.com/cloudfoundry/npm-cnb/package_manager"
+	"os"
 )
 
 func main() {
-	builder, err := libjavabuildpack.DefaultBuild()
+	builder, err := build.DefaultBuild()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create default builder: %s", err)
+		_, _ = fmt.Fprintf(os.Stderr, "failed to create default builder: %s", err)
 		os.Exit(100)
 	}
 
-	modules, ok, err := build.NewModules(builder, npm.NewNPM())
-
+	code, err := runBuild(builder)
 	if err != nil {
-		builder.Logger.Info(err.Error())
-		builder.Failure(102)
-		return
+		build.Logger.Info(err.Error())
 	}
 
-	if ok {
-		if err := modules.Contribute(); err != nil {
-			builder.Logger.Info(err.Error())
-			builder.Failure(103)
-			return
+	os.Exit(code)
+}
+
+func runBuild(builder build.Build) (int, error) {
+	builder.Logger.FirstLine(build.Logger.PrettyIdentity(build.Buildpack))
+
+	contributor, willContribute, err := npm.NewContributor(builder, package_manager.NodePackageManager{})
+	if err != nil {
+		return builder.Failure(102), err
+	}
+
+	if willContribute {
+		if err := contributor.Contribute(); err != nil {
+			return builder.Failure(103), err
 		}
 	}
 
-	if err := builder.Launch.WriteMetadata(build.CreateLaunchMetadata()); err != nil {
-		builder.Logger.Info("failed to write launch.toml: %s", err)
-		builder.Failure(100)
-	}
-
-	builder.Success()
+	return builder.Success(buildplan.BuildPlan{})
 }

@@ -1,73 +1,129 @@
 package npm
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"github.com/buildpack/libbuildpack/application"
+	"github.com/cloudfoundry/libcfbuildpack/build"
+	"github.com/cloudfoundry/libcfbuildpack/layers"
+	"io/ioutil"
 	"os"
 	"path/filepath"
-
-	"github.com/cloudfoundry/libjavabuildpack"
-	"github.com/cloudfoundry/npm-cnb/utils"
 )
 
-type NPM struct {
-	Runner Runner
+const Dependency = "modules"
+
+type PackageManager interface {
+	Install(location string) error
+	Rebuild(location string) error
 }
 
-func NewNPM() *NPM {
-	return &NPM{Runner: &npmCmd{}}
+type Contributor struct {
+	buildContribution  bool
+	launchContribution bool
+	pkgManager         PackageManager
+	app                application.Application
+	layer              layers.Layer
+	launch             layers.Layers
+	id                 string
 }
 
-func (n *NPM) InstallToLayer(srcLayer, dstLayer string) error {
-	srcPackageJsonPath := filepath.Join(srcLayer, "package.json")
-	if exists, err := libjavabuildpack.FileExists(srcPackageJsonPath); err != nil || !exists {
-		return fmt.Errorf("failed to find file %s ", srcPackageJsonPath)
+func NewContributor(builder build.Build, pkgManager PackageManager) (Contributor, bool, error) {
+	plan, shouldUseNPM := builder.BuildPlan[Dependency]
+	if !shouldUseNPM {
+		return Contributor{}, false, nil
 	}
 
-	return n.Runner.Run(srcLayer, "install", "--unsafe-perm", "--cache", filepath.Join(srcLayer, "npm-cache"))
-}
+	lockFile := filepath.Join(builder.Application.Root, "package-lock.json")
 
-func (n *NPM) RebuildLayer(srcLayer, dstLayer string) error {
-	srcPackageJsonPath := filepath.Join(srcLayer, "package.json")
-	if exists, err := libjavabuildpack.FileExists(srcPackageJsonPath); err != nil || !exists {
-		return fmt.Errorf("failed to find file %s ", srcPackageJsonPath)
+	if exists, err := layers.FileExists(lockFile); err != nil {
+		return Contributor{}, false, err
+	} else if !exists {
+		return Contributor{}, false, fmt.Errorf(`unable to find "package-lock.json"`)
 	}
 
-	if err := n.Runner.Run(srcLayer, "rebuild"); err != nil {
-		return err
-	}
-
-	srcModulesDir := filepath.Join(srcLayer, "node_modules")
-	dstModulesDir := filepath.Join(dstLayer, "node_modules")
-	if err := n.CleanAndCopyToDst(srcModulesDir, dstModulesDir); err != nil {
-		return fmt.Errorf("failed to rebuild : %v", err)
-	}
-
-	return nil
-}
-
-func (n *NPM) CleanAndCopyToDst(src, dst string) error {
-	if err := os.RemoveAll(dst); err != nil {
-		return fmt.Errorf("failed to remove modules in %s : %v", dst, err)
-	}
-
-	if err := n.copyModules(src, dst); err != nil {
-		return fmt.Errorf("failed to copy the src modules from %s to %s %v", src, dst, err)
-	}
-
-	return nil
-}
-
-func (n *NPM) copyModules(src, dst string) error {
-	exists, err := libjavabuildpack.FileExists(dst)
+	buf, err := ioutil.ReadFile(lockFile)
 	if err != nil {
-		return err
+		return Contributor{}, false, err
 	}
 
-	if !exists {
-		if err := os.MkdirAll(dst, 0777); err != nil {
+	hash := sha256.Sum256(buf)
+
+	contributor := Contributor{
+		app:        builder.Application,
+		pkgManager: pkgManager,
+		layer:      builder.Layers.Layer(Dependency),
+		launch:     builder.Layers,
+		id:         hex.EncodeToString(hash[:]),
+	}
+
+	if _, ok := plan.Metadata["build"]; ok {
+		contributor.buildContribution = true
+	}
+
+	if _, ok := plan.Metadata["launch"]; ok {
+		contributor.launchContribution = true
+	}
+
+	return contributor, true, nil
+}
+
+func (c Contributor) Contribute() error {
+	return c.layer.Contribute(c, func(layer layers.Layer) error {
+		nodeModules := filepath.Join(c.app.Root, "node_modules")
+
+		vendored, err := layers.FileExists(nodeModules)
+		if err != nil {
+			return fmt.Errorf("unable to stat node_modules: %s", err.Error())
+		}
+
+		if vendored {
+			if err := c.pkgManager.Rebuild(c.app.Root); err != nil {
+				return fmt.Errorf("unable to rebuild node_modules: %s", err.Error())
+			}
+		} else {
+			if err := c.pkgManager.Install(c.app.Root); err != nil {
+				return fmt.Errorf("unable to install node_modules: %s", err.Error())
+			}
+		}
+
+		if err := os.MkdirAll(layer.Root, 0777); err != nil {
+			return fmt.Errorf("unable make layer: %s", err.Error())
+		}
+
+		if err := layers.CopyDirectory(nodeModules, layer.Root); err != nil {
+			return fmt.Errorf(`unable to copy "%s" to "%s": %s`, nodeModules, layer.Root, err.Error())
+		}
+
+		if err := os.RemoveAll(nodeModules); err != nil {
+			return fmt.Errorf("unable to remove node_modules from the app dir: %s", err.Error())
+		}
+
+		if err := layer.OverrideSharedEnv("NODE_PATH", layer.Root); err != nil {
 			return err
 		}
+
+		return c.launch.WriteMetadata(layers.Metadata{
+			Processes: []layers.Process{{"web", "npm start"}},
+		})
+	}, c.flags()...)
+}
+
+func (c Contributor) Identity() (name string, version string) {
+	return Dependency, c.id
+}
+
+func (c Contributor) flags() []layers.Flag {
+	flags := []layers.Flag{layers.Cache}
+
+	if c.buildContribution {
+		flags = append(flags, layers.Build)
 	}
 
-	return utils.CopyDirectory(src, dst)
+	if c.launchContribution {
+		flags = append(flags, layers.Launch)
+	}
+
+	return flags
 }
