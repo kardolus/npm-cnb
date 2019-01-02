@@ -12,6 +12,7 @@ import (
 	"github.com/cloudfoundry/libcfbuildpack/layers"
 
 	"github.com/buildpack/libbuildpack/buildplan"
+	bp "github.com/buildpack/libbuildpack/layers"
 	"github.com/cloudfoundry/libcfbuildpack/test"
 	"github.com/cloudfoundry/npm-cnb/modules"
 	"github.com/golang/mock/gomock"
@@ -148,15 +149,22 @@ func testModules(t *testing.T, when spec.G, it spec.S) {
 					})
 				})
 
-				when.Focus("we get back node_modules and npm-cache", func() {
+				when("we get back node_modules and npm-cache", func() {
 					it("re-uses cached node_modules", func() {
 						debug := &bytes.Buffer{}
 						info := &bytes.Buffer{}
-						factory.Build.Logger = cflogger.Logger{Logger: logger.NewLogger(debug, info)}
 
 						factory.AddBuildPlan(modules.Dependency, buildplan.Dependency{
 							Metadata: buildplan.Metadata{"launch": true},
 						})
+
+						root := factory.Build.Application.Root
+
+						factory.Build.Layers = layers.NewLayers(
+							bp.Layers{Root: filepath.Join(root, "layers")},
+							bp.Layers{Root: filepath.Join(root, "buildpack-cache")},
+							cflogger.Logger{Logger: logger.NewLogger(debug, info)},
+						)
 
 						layer := factory.Build.Layers.Layer(modules.Dependency)
 						nodeModules := filepath.Join(layer.Root, "node_modules", "test_module")

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/cloudfoundry/libcfbuildpack/helper"
@@ -88,10 +87,6 @@ func (c Contributor) Contribute() error {
 		nodeModules := filepath.Join(c.app.Root, "node_modules")
 		npmCache := filepath.Join(c.app.Root, "npm-cache")
 
-		fmt.Println("HERE ================================================ ", existingNodeModules)
-		b, _ := exec.Command("ls", "-al", existingNodeModules).Output()
-		fmt.Println(string(b))
-
 		vendored, err := helper.FileExists(nodeModules)
 		if err != nil {
 			return fmt.Errorf("unable to stat node_modules: %s", err.Error())
@@ -153,8 +148,15 @@ func (c Contributor) Contribute() error {
 			return fmt.Errorf("unable to remove existing npn-cache: %s", err.Error())
 		}
 
-		if err := helper.CopyDirectory(npmCache, layer.Root); err != nil {
-			return fmt.Errorf(`unable to copy "%s" to "%s": %s`, npmCache, layer.Root, err.Error())
+		npmCacheExists, err := helper.FileExists(npmCache)
+		if err != nil {
+			return err
+		}
+
+		if npmCacheExists {
+			if err := helper.CopyDirectory(npmCache, layer.Root); err != nil {
+				return fmt.Errorf(`unable to copy "%s" to "%s": %s`, npmCache, layer.Root, err.Error())
+			}
 		}
 
 		if err := os.RemoveAll(npmCache); err != nil {
