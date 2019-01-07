@@ -28,7 +28,7 @@ func main() {
 func runBuild(context build.Build) (int, error) {
 	context.Logger.FirstLine(context.Logger.PrettyIdentity(context.Buildpack))
 
-	contributor, willContribute, err := modules.NewContributor(context, npm.NPM{})
+	contributor, willContribute, err := modules.NewContributor(context, npm.NPM{Logger: context.Logger})
 	if err != nil {
 		return context.Failure(102), err
 	}
