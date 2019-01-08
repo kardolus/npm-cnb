@@ -2,17 +2,21 @@ package npm
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/cloudfoundry/libcfbuildpack/helper"
 )
+
+type Runner interface {
+	Run(bin, dir string, args ...string) error
+}
 
 type Logger interface {
 	Info(format string, args ...interface{})
 }
 
 type NPM struct {
+	Runner Runner
 	Logger Logger
 }
 
@@ -39,21 +43,13 @@ func (n NPM) Install(cache, location string) error {
 		defer os.RemoveAll(existingNPMCache)
 	}
 
-	if err := run(location, "install", "--unsafe-perm", "--cache", npmCache); err != nil {
+	if err := n.Runner.Run("npm", location, "install", "--unsafe-perm", "--cache", npmCache); err != nil {
 		return err
 	}
 
-	return run(location, "cache", "verify", "--cache", npmCache)
+	return n.Runner.Run("npm", location, "cache", "verify", "--cache", npmCache)
 }
 
 func (n NPM) Rebuild(location string) error {
-	return run(location, "rebuild")
-}
-
-func run(dir string, args ...string) error {
-	cmd := exec.Command("npm", args...)
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return n.Runner.Run("npm", location, "rebuild")
 }
